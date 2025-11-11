@@ -12,7 +12,6 @@
 
 - [Quick Reference](#quick-reference) - Commands and files
 - [Common Scenarios](#common-scenarios) - Real-world examples
-- [Troubleshooting](#troubleshooting) - Problem solutions
 - [Best Practices](#best-practices) - Success tips
 
 ---
@@ -138,7 +137,7 @@ If you have documentation but files are huge (>500 lines, 10+ level 2 sections):
 
    ```bash
    # Load BMad Master or any agent
-   bmad/core/tools/shard-doc.xml --input docs/massive-doc.md
+   {bmad_folder}/core/tools/shard-doc.xml --input docs/massive-doc.md
    ```
 
    - Splits on level 2 sections by default
@@ -148,7 +147,7 @@ If you have documentation but files are huge (>500 lines, 10+ level 2 sections):
 2. **Then:** Run `index-docs` task to create navigation:
 
    ```bash
-   bmad/core/tasks/index-docs.xml --directory ./docs
+   {bmad_folder}/core/tasks/index-docs.xml --directory ./docs
    ```
 
 3. **Finally:** Validate quality - if sharded docs still seem incomplete/outdated → Run `document-project`
@@ -211,7 +210,7 @@ If you have **good, current documentation** but it's in massive files:
 
 ```bash
 # For each massive doc (>500 lines or 10+ level 2 sections)
-bmad/core/tools/shard-doc.xml \
+{bmad_folder}/core/tools/shard-doc.xml \
   --input docs/api-documentation.md \
   --output docs/api/ \
   --level 2  # Split on ## headers (default)
@@ -220,7 +219,7 @@ bmad/core/tools/shard-doc.xml \
 **Step 2: Generate index**
 
 ```bash
-bmad/core/tasks/index-docs.xml --directory ./docs
+{bmad_folder}/core/tasks/index-docs.xml --directory ./docs
 ```
 
 **Step 3: Validate**
@@ -336,8 +335,8 @@ flowchart TD
     CHECK -->|Yes| CREATE
     CHECK -->|No| RETRO
 
-    style SPRINT fill:#bfb,stroke:#333,stroke-width:2px
-    style RETRO fill:#fbf,stroke:#333,stroke-width:2px
+    style SPRINT fill:#bfb,stroke:#333,stroke-width:2px,color:#000
+    style RETRO fill:#fbf,stroke:#333,stroke-width:2px,color:#000
 ```
 
 **Status Progression:**
@@ -534,8 +533,6 @@ Document in tech-spec/architecture:
 
 ## Troubleshooting
 
-For complete troubleshooting, see [Troubleshooting Guide](./troubleshooting.md).
-
 ### AI Agents Lack Codebase Understanding
 
 **Symptoms:**
@@ -706,9 +703,9 @@ flowchart TD
     PRD --> IMPL
     PRD2 --> IMPL
 
-    style START fill:#f9f,stroke:#333,stroke-width:2px
-    style DOC fill:#ffb,stroke:#333,stroke-width:2px
-    style IMPL fill:#bfb,stroke:#333,stroke-width:2px
+    style START fill:#f9f,stroke:#333,stroke-width:2px,color:#000
+    style DOC fill:#ffb,stroke:#333,stroke-width:2px,color:#000
+    style IMPL fill:#bfb,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ---
@@ -735,7 +732,6 @@ flowchart TD
 - **[Quick Start Guide](./quick-start.md)** - Getting started with BMM
 - **[Glossary](./glossary.md)** - Key terminology
 - **[FAQ](./faq.md)** - Common questions
-- **[Troubleshooting](./troubleshooting.md)** - Problem resolution
 - **[Workflow Documentation](./README.md#-workflow-guides)** - Complete workflow reference
 
 ---

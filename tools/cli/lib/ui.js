@@ -17,14 +17,26 @@ class UI {
    */
   async promptInstall() {
     CLIUtils.displayLogo();
-    CLIUtils.displaySection('BMAD™ Setup', 'Build More, Architect Dreams');
+    const version = CLIUtils.getVersion();
+    CLIUtils.displaySection('BMAD™ Setup', `Build More, Architect Dreams v${version}`);
 
     const confirmedDirectory = await this.getConfirmedDirectory();
+
+    // Preflight: Check for legacy BMAD v4 footprints immediately after getting directory
+    const { Detector } = require('../installers/lib/core/detector');
+    const { Installer } = require('../installers/lib/core/installer');
+    const detector = new Detector();
+    const installer = new Installer();
+    const legacyV4 = await detector.detectLegacyV4(confirmedDirectory);
+    if (legacyV4.hasLegacyV4) {
+      await installer.handleLegacyV4Migration(confirmedDirectory, legacyV4);
+    }
 
     // Check if there's an existing BMAD installation
     const fs = require('fs-extra');
     const path = require('node:path');
-    const bmadDir = path.join(confirmedDirectory, 'bmad');
+    // Use findBmadDir to detect any custom folder names (V6+)
+    const bmadDir = await installer.findBmadDir(confirmedDirectory);
     const hasExistingInstall = await fs.pathExists(bmadDir);
 
     // Track action type (only set if there's an existing installation)
@@ -82,25 +94,23 @@ class UI {
       // If actionType === 'update' or 'reinstall', continue with normal flow below
     }
 
-    // Collect IDE tool selection EARLY (before module configuration)
-    // This allows users to make all decisions upfront before file copying begins
-    const toolSelection = await this.promptToolSelection(confirmedDirectory, []);
-
     const { installedModuleIds } = await this.getExistingInstallation(confirmedDirectory);
     const coreConfig = await this.collectCoreConfig(confirmedDirectory);
     const moduleChoices = await this.getModuleChoices(installedModuleIds);
     const selectedModules = await this.selectModules(moduleChoices);
 
-    console.clear();
-    CLIUtils.displayLogo();
-    CLIUtils.displayModuleComplete('core', false); // false = don't clear the screen again
+    // Collect IDE tool selection AFTER configuration prompts (fixes Windows/PowerShell hang)
+    // This allows text-based prompts to complete before the checkbox prompt
+    const toolSelection = await this.promptToolSelection(confirmedDirectory, selectedModules);
+
+    // No more screen clearing - keep output flowing
 
     return {
       actionType: actionType || 'update', // Preserve reinstall or update action
       directory: confirmedDirectory,
       installCore: true, // Always install core
       modules: selectedModules,
-      // IDE selection collected early, will be configured later
+      // IDE selection collected after config, will be configured later
       ides: toolSelection.ides,
       skipIde: toolSelection.skipIde,
       coreConfig: coreConfig, // Pass collected core config to installer
@@ -429,9 +439,6 @@ class UI {
           console.log(chalk.gray('Directory exists and is empty'));
         }
       }
-    } else {
-      const existingParent = await this.findExistingParent(directory);
-      console.log(chalk.gray(`Will create in: ${existingParent}`));
     }
   }
 

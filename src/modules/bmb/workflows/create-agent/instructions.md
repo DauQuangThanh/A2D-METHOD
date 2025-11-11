@@ -1,8 +1,8 @@
 # Build Agent - Interactive Agent Builder Instructions
 
-<critical>The workflow execution engine is governed by: {project-root}/bmad/core/tasks/workflow.xml</critical>
-<critical>You MUST have already loaded and processed: {project-root}/bmad/bmb/workflows/create-agent/workflow.yaml</critical>
-<critical>Study YAML agent examples in: {project-root}/bmad/bmm/agents/ for patterns</critical>
+<critical>The workflow execution engine is governed by: {project-root}/{bmad_folder}/core/tasks/workflow.xml</critical>
+<critical>You MUST have already loaded and processed: {project-root}/{bmad_folder}/bmb/workflows/create-agent/workflow.yaml</critical>
+<critical>Study YAML agent examples in: {project-root}/{bmad_folder}/bmm/agents/ for patterns</critical>
 <critical>Communicate in {communication_language} throughout the agent creation process</critical>
 
 <workflow>
@@ -11,7 +11,7 @@
   <ask>Do you want to brainstorm agent ideas first? [y/n]</ask>
 
   <check if="user answered yes">
-    <action>Invoke brainstorming workflow: {project-root}/bmad/core/workflows/brainstorming/workflow.yaml</action>
+    <action>Invoke brainstorming workflow: {project-root}/{bmad_folder}/core/workflows/brainstorming/workflow.yaml</action>
     <action>Pass context data: {installed_path}/brainstorm-context.md</action>
     <action>Wait for brainstorming session completion</action>
     <action>Use brainstorming output to inform agent identity and persona development in following steps</action>
@@ -51,19 +51,19 @@
   <check if="module agent selected">
     <action>Discover which module system fits best (bmm, bmb, cis, or custom)</action>
     <action>Store as {{target_module}} for path determination</action>
-    <note>Agent will be saved to: bmad/{{target_module}}/agents/</note>
+    <note>Agent will be saved to: {bmad_folder}/{{target_module}}/agents/</note>
   </check>
 
   <check if="standalone agent selected">
     <action>Explain this will be their personal agent, not tied to a module</action>
-    <note>Agent will be saved to: bmad/agents/{{agent-name}}/</note>
+    <note>Agent will be saved to: {bmad_folder}/agents/{{agent-name}}/</note>
     <note>All sidecar files will be in the same folder</note>
   </check>
 
 <critical>Determine agent location:</critical>
 
-- Module Agent → bmad/{{module}}/agents/{{agent-name}}.agent.yaml
-- Standalone Agent → bmad/agents/{{agent-name}}/{{agent-name}}.agent.yaml
+- Module Agent → {bmad_folder}/{{module}}/agents/{{agent-name}}.agent.yaml
+- Standalone Agent → {bmad_folder}/agents/{{agent-name}}/{{agent-name}}.agent.yaml
 
 <note>Keep agent naming/identity details for later - let them emerge naturally through the creation process</note>
 
@@ -193,8 +193,22 @@ menu:
   - trigger: [emerging from conversation]
     workflow: [path based on capability]
     description: [user's words refined]
-```
+
+# For cross-module workflow references (advanced):
+
+- trigger: [another capability]
+  workflow: "{project-root}/{bmad_folder}/SOURCE_MODULE/workflows/path/to/workflow.yaml"
+  workflow-install: "{project-root}/{bmad_folder}/THIS_MODULE/workflows/vendored/path/workflow.yaml"
+  description: [description]
+
+`````
 </example>
+
+<note>**Workflow Vendoring (Advanced):**
+When an agent needs workflows from another module, use both `workflow` (source) and `workflow-install` (destination).
+During installation, the workflow will be copied and configured for this module, making it standalone.
+This is typically used when creating specialized modules that reuse common workflows with different configurations.
+</note>
 
 <template-output>agent_commands</template-output>
 </step>
@@ -224,7 +238,7 @@ menu:
 <example type="yaml">
   agent:
     metadata:
-      id: bmad/{{target_module}}/agents/{{agent_filename}}.md
+      id: {bmad_folder}/{{target_module}}/agents/{{agent_filename}}.md
       name: {{agent_name}} # The name chosen together
       title: {{agent_title}} # From the role that emerged
       icon: {{agent_icon}} # The perfect emoji
@@ -298,14 +312,16 @@ menu: {{The capabilities built}}
 
 **Folder Structure:**
 
-```
+`````
+
 {{agent_filename}}-sidecar/
-├── memories.md         # Persistent memory
-├── instructions.md     # Private directives
-├── knowledge/         # Knowledge base
-│   └── README.md
-└── sessions/          # Session notes
-```
+├── memories.md # Persistent memory
+├── instructions.md # Private directives
+├── knowledge/ # Knowledge base
+│ └── README.md
+└── sessions/ # Session notes
+
+````
 
 **File: memories.md**
 
@@ -323,7 +339,7 @@ menu: {{The capabilities built}}
 ## Personal Notes
 
 <!-- My observations and insights -->
-```
+````
 
 **File: instructions.md**
 

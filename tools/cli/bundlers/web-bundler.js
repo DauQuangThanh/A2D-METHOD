@@ -51,8 +51,13 @@ class WebBundler {
     console.log(chalk.cyan.bold('═══════════════════════════════════════════════\n'));
 
     try {
-      // Pre-discover all modules to generate complete manifests
+      // Vendor cross-module workflows FIRST
       const modules = await this.discoverModules();
+      for (const module of modules) {
+        await this.vendorCrossModuleWorkflows(module);
+      }
+
+      // Pre-discover all modules to generate complete manifests
       for (const module of modules) {
         await this.preDiscoverModule(module);
       }
@@ -91,6 +96,9 @@ class WebBundler {
       agents: [],
       teams: [],
     };
+
+    // Vendor cross-module workflows first (if not already done by bundleAll)
+    await this.vendorCrossModuleWorkflows(moduleName);
 
     // Pre-discover all agents and teams for manifest generation
     await this.preDiscoverModule(moduleName);
@@ -133,6 +141,9 @@ class WebBundler {
     this.stats.totalAgents++;
 
     console.log(chalk.dim(`  → Processing: ${agentName}`));
+
+    // Vendor cross-module workflows first (if not already done)
+    await this.vendorCrossModuleWorkflows(moduleName);
 
     const agentPath = path.join(this.modulesPath, moduleName, 'agents', agentFile);
 
@@ -194,6 +205,18 @@ class WebBundler {
       this.stats.warnings.push({ agent: agentName, warnings: dependencyWarnings });
     }
 
+    // Check for module's default-party.csv and include it as agent manifest
+    const defaultPartyPath = path.join(this.modulesPath, moduleName, 'teams', 'default-party.csv');
+    if (await fs.pathExists(defaultPartyPath)) {
+      const partyContent = await fs.readFile(defaultPartyPath, 'utf8');
+      // Process any placeholders in the CSV content
+      const processedPartyContent = this.processProjectRootReferences(partyContent);
+      // Wrap as text to preserve raw CSV format in CDATA
+      const wrappedParty = this.wrapContentInXml(processedPartyContent, 'bmad/_cfg/agent-manifest.csv', 'text');
+      dependencies.set('bmad/_cfg/agent-manifest.csv', wrappedParty);
+      console.log(chalk.gray(`    + Added party manifest from module default-party.csv`));
+    }
+
     // Remove commands for skipped workflows from agent XML
     if (skippedWorkflows.length > 0) {
       agentXml = this.removeSkippedWorkflowCommands(agentXml, skippedWorkflows);
@@ -248,6 +271,24 @@ class WebBundler {
     const processed = new Set();
     const allAgentXmls = [];
     const warnings = [];
+
+    // Check if team has a party CSV file (agent manifest)
+    const hasPartyFile = teamConfig.party && teamConfig.party.endsWith('.csv');
+    if (hasPartyFile) {
+      // Load the party CSV and add it as bmad/_cfg/agent-manifest.csv
+      const partyPath = path.join(path.dirname(teamPath), teamConfig.party.replace(/^\.\//, ''));
+      if (await fs.pathExists(partyPath)) {
+        const partyContent = await fs.readFile(partyPath, 'utf8');
+        // Process any placeholders in the CSV content
+        const processedPartyContent = this.processProjectRootReferences(partyContent);
+        // Wrap as text/csv to preserve raw CSV format in CDATA
+        const wrappedParty = this.wrapContentInXml(processedPartyContent, 'bmad/_cfg/agent-manifest.csv', 'text');
+        dependencies.set('bmad/_cfg/agent-manifest.csv', wrappedParty);
+        console.log(chalk.gray(`    + Added agent manifest from: ${teamConfig.party}`));
+      } else {
+        console.log(chalk.yellow(`    ⚠ Party file not found: ${partyPath}`));
+      }
+    }
 
     // 1. First, always add the bmad-web-orchestrator (XML file only, no transformation needed)
     const orchestratorXmlPath = path.join(this.sourceDir, 'core', 'agents', 'bmad-web-orchestrator.agent.xml');
@@ -434,6 +475,99 @@ class WebBundler {
   }
 
   /**
+   * Vendor cross-module workflows for a module
+   * Scans source agent YAML files for workflow-install attributes and copies workflows
+   */
+  async vendorCrossModuleWorkflows(moduleName) {
+    const modulePath = path.join(this.modulesPath, moduleName);
+    const agentsPath = path.join(modulePath, 'agents');
+
+    if (!(await fs.pathExists(agentsPath))) {
+      return;
+    }
+
+    // Find all agent YAML files
+    const files = await fs.readdir(agentsPath);
+    const yamlFiles = files.filter((f) => f.endsWith('.agent.yaml'));
+
+    for (const agentFile of yamlFiles) {
+      const agentPath = path.join(agentsPath, agentFile);
+      const agentYaml = yaml.load(await fs.readFile(agentPath, 'utf8'));
+
+      const menuItems = agentYaml?.agent?.menu || [];
+      const workflowInstallItems = menuItems.filter((item) => item['workflow-install']);
+
+      for (const item of workflowInstallItems) {
+        const sourceWorkflowPath = item.workflow;
+        const installWorkflowPath = item['workflow-install'];
+
+        if (!sourceWorkflowPath || !installWorkflowPath) {
+          continue;
+        }
+
+        // Parse paths to extract module and workflow location
+        // Support both {project-root}/bmad/... and {project-root}/{bmad_folder}/... patterns
+        const sourceMatch = sourceWorkflowPath.match(/\{project-root\}\/(?:\{bmad_folder\}|bmad)\/([^/]+)\/workflows\/(.+)/);
+        const installMatch = installWorkflowPath.match(/\{project-root\}\/(?:\{bmad_folder\}|bmad)\/([^/]+)\/workflows\/(.+)/);
+
+        if (!sourceMatch || !installMatch) {
+          continue;
+        }
+
+        const sourceModule = sourceMatch[1];
+        const sourceWorkflowRelPath = sourceMatch[2];
+        const installModule = installMatch[1];
+        const installWorkflowRelPath = installMatch[2];
+
+        // Build actual filesystem paths
+        const actualSourceWorkflowPath = path.join(this.modulesPath, sourceModule, 'workflows', sourceWorkflowRelPath);
+        const actualDestWorkflowPath = path.join(this.modulesPath, installModule, 'workflows', installWorkflowRelPath);
+
+        // Check if source workflow exists
+        if (!(await fs.pathExists(actualSourceWorkflowPath))) {
+          console.log(chalk.yellow(`    ⚠ Source workflow not found for vendoring: ${sourceWorkflowPath}`));
+          continue;
+        }
+
+        // Check if destination already exists (skip if already vendored)
+        if (await fs.pathExists(actualDestWorkflowPath)) {
+          continue;
+        }
+
+        // Get workflow directory (workflow.yaml is in a directory with other files)
+        const sourceWorkflowDir = path.dirname(actualSourceWorkflowPath);
+        const destWorkflowDir = path.dirname(actualDestWorkflowPath);
+
+        // Copy entire workflow directory
+        await fs.copy(sourceWorkflowDir, destWorkflowDir, { overwrite: false });
+
+        // Update config_source in the vendored workflow.yaml
+        const workflowYamlPath = actualDestWorkflowPath;
+        if (await fs.pathExists(workflowYamlPath)) {
+          await this.updateWorkflowConfigSource(workflowYamlPath, installModule);
+        }
+
+        console.log(chalk.dim(`    → Vendored workflow: ${sourceWorkflowRelPath} → ${installModule}/workflows/${installWorkflowRelPath}`));
+      }
+    }
+  }
+
+  /**
+   * Update config_source in a vendored workflow YAML file
+   */
+  async updateWorkflowConfigSource(workflowYamlPath, newModuleName) {
+    let yamlContent = await fs.readFile(workflowYamlPath, 'utf8');
+
+    // Replace config_source with new module reference
+    // Support both old format (bmad) and new format ({bmad_folder})
+    const configSourcePattern = /config_source:\s*["']?\{project-root\}\/(?:\{bmad_folder\}|bmad)\/[^/]+\/config\.yaml["']?/g;
+    const newConfigSource = `config_source: "{project-root}/{bmad_folder}/${newModuleName}/config.yaml"`;
+
+    const updatedYaml = yamlContent.replaceAll(configSourcePattern, newConfigSource);
+    await fs.writeFile(workflowYamlPath, updatedYaml, 'utf8');
+  }
+
+  /**
    * Pre-discover all agents and teams in a module for manifest generation
    */
   async preDiscoverModule(moduleName) {
@@ -549,7 +683,8 @@ class WebBundler {
       /system-prompts="([^"]+)"/g,
       /tools="([^"]+)"/g,
       /knowledge="([^"]+)"/g,
-      /{project-root}\/([^"'\s<>]+)/g,
+      /{project-root}\/([^"'\s<>]+)/g, // Legacy {project-root} paths
+      /\bbmad\/([^"'\s<>]+)/g, // Direct bmad/ paths (after {bmad_folder} replacement)
     ];
 
     for (const pattern of patterns) {
@@ -558,9 +693,16 @@ class WebBundler {
         let filePath = match[1];
         // Remove {project-root} prefix if present
         filePath = filePath.replace(/^{project-root}\//, '');
+        // Remove {bmad_folder} prefix if present (should be rare, mostly replaced already)
+        filePath = filePath.replace(/^{bmad_folder}\//, 'bmad/');
+
+        // For bmad/ pattern, prepend 'bmad/' since it was captured without it
+        if (pattern.source.includes(String.raw`\bbmad\/`)) {
+          filePath = 'bmad/' + filePath;
+        }
 
         // Skip obvious placeholder/example paths
-        if (filePath && !filePath.includes('path/to/') && !filePath.includes('example')) {
+        if (filePath && !filePath.includes('path/to/') && !filePath.includes('example') && !filePath.includes('...')) {
           refs.add(filePath);
         }
       }
@@ -578,6 +720,8 @@ class WebBundler {
       while ((match = pattern.exec(xml)) !== null) {
         let workflowPath = match[1];
         workflowPath = workflowPath.replace(/^{project-root}\//, '');
+        // Remove {bmad_folder} prefix if present and replace with bmad
+        workflowPath = workflowPath.replace(/^{bmad_folder}\//, 'bmad/');
 
         // Skip obvious placeholder/example paths
         if (workflowPath && workflowPath.endsWith('.yaml') && !workflowPath.includes('path/to/') && !workflowPath.includes('example')) {
@@ -595,16 +739,25 @@ class WebBundler {
   removeSkippedWorkflowCommands(agentXml, skippedWorkflows) {
     let modifiedXml = agentXml;
 
-    // For each skipped workflow, find and remove the corresponding <c> command
+    // For each skipped workflow, find and remove menu items and commands
     for (const workflowPath of skippedWorkflows) {
-      // Match: <c cmd="..." run-workflow="workflowPath">...</c>
       // Need to escape special regex characters in the path
       const escapedPath = workflowPath.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
-      // Pattern to match the command line with this workflow
-      const pattern = new RegExp(`\\s*<c\\s+cmd="[^"]*"\\s+run-workflow="[^"]*${escapedPath}"[^>]*>.*?</c>\\s*`, 'gs');
+      // Pattern 1: Remove <item> tags with workflow attribute
+      // Match: <item cmd="..." workflow="workflowPath">...</item>
+      const itemWorkflowPattern = new RegExp(`\\s*<item\\s+[^>]*workflow="[^"]*${escapedPath}"[^>]*>.*?</item>\\s*`, 'gs');
+      modifiedXml = modifiedXml.replace(itemWorkflowPattern, '');
 
-      modifiedXml = modifiedXml.replace(pattern, '');
+      // Pattern 2: Remove <item> tags with run-workflow attribute
+      // Match: <item cmd="..." run-workflow="workflowPath">...</item>
+      const itemRunWorkflowPattern = new RegExp(`\\s*<item\\s+[^>]*run-workflow="[^"]*${escapedPath}"[^>]*>.*?</item>\\s*`, 'gs');
+      modifiedXml = modifiedXml.replace(itemRunWorkflowPattern, '');
+
+      // Pattern 3: Remove <c> tags with run-workflow attribute (legacy)
+      // Match: <c cmd="..." run-workflow="workflowPath">...</c>
+      const cPattern = new RegExp(`\\s*<c\\s+[^>]*run-workflow="[^"]*${escapedPath}"[^>]*>.*?</c>\\s*`, 'gs');
+      modifiedXml = modifiedXml.replace(cPattern, '');
     }
 
     return modifiedXml;
@@ -614,6 +767,11 @@ class WebBundler {
    * Process a file dependency recursively
    */
   async processFileDependency(filePath, dependencies, processed, moduleName, warnings = []) {
+    // Skip workflow YAML files - they're handled by processWorkflowDependency
+    if (filePath.includes('/workflow') && filePath.endsWith('workflow.yaml')) {
+      return;
+    }
+
     // Skip if already processed
     if (processed.has(filePath)) {
       return;
@@ -655,7 +813,8 @@ class WebBundler {
         const deps = depMatch[1].match(/['"]([^'"]+)['"]/g);
         if (deps) {
           for (const dep of deps) {
-            const depPath = dep.replaceAll(/['"]/g, '').replace(/^{project-root}\//, '');
+            let depPath = dep.replaceAll(/['"]/g, '').replace(/^{project-root}\//, '');
+            depPath = depPath.replace(/^{bmad_folder}\//, 'bmad/');
             if (depPath && !processed.has(depPath)) {
               await this.processFileDependency(depPath, dependencies, processed, moduleName, warnings);
             }
@@ -668,7 +827,8 @@ class WebBundler {
         const templates = templateMatch[1].match(/['"]([^'"]+)['"]/g);
         if (templates) {
           for (const template of templates) {
-            const templatePath = template.replaceAll(/['"]/g, '').replace(/^{project-root}\//, '');
+            let templatePath = template.replaceAll(/['"]/g, '').replace(/^{project-root}\//, '');
+            templatePath = templatePath.replace(/^{bmad_folder}\//, 'bmad/');
             if (templatePath && !processed.has(templatePath)) {
               await this.processFileDependency(templatePath, dependencies, processed, moduleName, warnings);
             }
@@ -856,8 +1016,13 @@ class WebBundler {
       bundleYamlContent = yamlContent;
     }
 
+    // Process {project-root} and {bmad_folder} references in the YAML content
+    bundleYamlContent = this.processProjectRootReferences(bundleYamlContent);
+
     // Include the YAML file with only web_bundle content, wrapped in XML
-    const yamlId = workflowPath.replace(/^{project-root}\//, '');
+    // Process the workflow path to create a clean ID
+    let yamlId = workflowPath.replace(/^{project-root}\//, '');
+    yamlId = yamlId.replace(/^{bmad_folder}\//, 'bmad/');
     const wrappedYaml = this.wrapContentInXml(bundleYamlContent, yamlId, 'yaml');
     dependencies.set(yamlId, wrappedYaml);
 
@@ -874,7 +1039,11 @@ class WebBundler {
       const bundleFiles = workflowConfig.web_bundle.web_bundle_files;
 
       for (const bundleFilePath of bundleFiles) {
-        if (processed.has(bundleFilePath)) {
+        // Process the file path to create a clean ID for checking if already processed
+        let cleanFilePath = bundleFilePath.replace(/^{project-root}\//, '');
+        cleanFilePath = cleanFilePath.replace(/^{bmad_folder}\//, 'bmad/');
+
+        if (processed.has(cleanFilePath)) {
           continue;
         }
 
@@ -891,15 +1060,18 @@ class WebBundler {
           await this.processWorkflowDependency(bundleFilePath, dependencies, processed, moduleName, warnings);
         } else {
           // Regular file - process normally
-          processed.add(bundleFilePath);
+          processed.add(cleanFilePath);
 
           // Read the file content
-          const fileContent = await fs.readFile(bundleActualPath, 'utf8');
+          let fileContent = await fs.readFile(bundleActualPath, 'utf8');
           const fileExt = path.extname(bundleActualPath).toLowerCase().replace('.', '');
 
+          // Process {project-root} references before wrapping
+          fileContent = this.processProjectRootReferences(fileContent);
+
           // Wrap in XML with proper escaping
-          const wrappedContent = this.wrapContentInXml(fileContent, bundleFilePath, fileExt);
-          dependencies.set(bundleFilePath, wrappedContent);
+          const wrappedContent = this.wrapContentInXml(fileContent, cleanFilePath, fileExt);
+          dependencies.set(cleanFilePath, wrappedContent);
         }
       }
     }
@@ -925,7 +1097,9 @@ class WebBundler {
       return;
     }
 
-    const fileContent = await fs.readFile(actualPath, 'utf8');
+    let fileContent = await fs.readFile(actualPath, 'utf8');
+    // Process {project-root} and {bmad_folder} references
+    fileContent = this.processProjectRootReferences(fileContent);
     const wrappedContent = this.wrapContentInXml(fileContent, coreWorkflowPath, 'xml');
     dependencies.set(coreWorkflowPath, wrappedContent);
   }
@@ -949,7 +1123,9 @@ class WebBundler {
         continue;
       }
 
-      const fileContent = await fs.readFile(actualPath, 'utf8');
+      let fileContent = await fs.readFile(actualPath, 'utf8');
+      // Process {project-root} and {bmad_folder} references
+      fileContent = this.processProjectRootReferences(fileContent);
       const fileExt = path.extname(actualPath).toLowerCase().replace('.', '');
       const wrappedContent = this.wrapContentInXml(fileContent, filePath, fileExt);
       dependencies.set(filePath, wrappedContent);
@@ -982,6 +1158,8 @@ class WebBundler {
   async processWildcardDependency(pattern, dependencies, processed, moduleName, warnings = []) {
     // Remove {project-root} prefix
     pattern = pattern.replace(/^{project-root}\//, '');
+    // Replace {bmad_folder} with bmad
+    pattern = pattern.replace(/^{bmad_folder}\//, 'bmad/');
 
     // Get directory and file pattern
     const lastSlash = pattern.lastIndexOf('/');
@@ -1049,6 +1227,9 @@ class WebBundler {
   resolveFilePath(filePath, moduleName) {
     // Remove {project-root} prefix
     filePath = filePath.replace(/^{project-root}\//, '');
+    // Replace {bmad_folder} with bmad
+    filePath = filePath.replace(/^{bmad_folder}\//, 'bmad/');
+    filePath = filePath.replace(/^{bmad_folder}$/, 'bmad');
 
     // Check temp directory first for _cfg files
     if (filePath.startsWith('bmad/_cfg/')) {
@@ -1115,13 +1296,15 @@ class WebBundler {
   }
 
   /**
-   * Process and remove {project-root} references
+   * Process and remove {project-root} references and replace {bmad_folder} with bmad
    */
   processProjectRootReferences(content) {
     // Remove {project-root}/ prefix (with slash)
     content = content.replaceAll('{project-root}/', '');
     // Also remove {project-root} without slash
     content = content.replaceAll('{project-root}', '');
+    // Replace {bmad_folder} with bmad
+    content = content.replaceAll('{bmad_folder}', 'bmad');
     return content;
   }
 
@@ -1447,7 +1630,10 @@ class WebBundler {
     }
 
     // Display warnings summary
-    if (this.stats.warnings.length > 0) {
+    // Check if there are actually any warnings with content
+    const hasActualWarnings = this.stats.warnings.some((w) => w && w.warnings && w.warnings.length > 0);
+
+    if (hasActualWarnings) {
       console.log(chalk.yellow('\n⚠ Missing Dependencies by Agent:'));
 
       // Group and display warnings by agent
@@ -1461,6 +1647,8 @@ class WebBundler {
           }
         }
       }
+    } else {
+      console.log(chalk.green('\n✓ No missing dependencies'));
     }
 
     // Final status
