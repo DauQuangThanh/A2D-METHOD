@@ -21,19 +21,9 @@ game_project_name:
   default: "{directory_name}"
   result: "{value}"
 
-game_design_docs:
-  prompt: "Where should game design and planning documents (GDD, narrative, etc.) be stored?"
-  default: "{output_folder}/design"
-  result: "{project-root}/{value}"
-
-tech_docs:
-  prompt: "Where should technical reference documents be stored?"
-  default: "{output_folder}/technical"
-  result: "{project-root}/{value}"
-
-dev_ephemeral_location:
-  prompt: "Where should ephemeral development artifacts be stored (stories, epics, temp context, etc...)?"
-  default: "{bmad_folder}-ephemeral"
+sprint_artifacts:
+  prompt: "Where should Sprint Artifacts be stored (stories, epics, temp context, etc...)?"
+  default: "{output_folder}/sprint-artifacts"
   result: "{project-root}/{value}"
 
 game_dev_experience:
@@ -48,7 +38,7 @@ game_dev_experience:
     - value: "expert"
       label: "Expert - Experienced game developer, be direct and technical"
 
-specified_framework:
+primary_platform:
   prompt: "Which game development framework or engine do you want to install support for?"
   default: ["unity", "unreal", "godot", "other"]
   required: true
@@ -62,6 +52,3 @@ specified_framework:
       label: "Godot"
     - value: "other"
       label: "Custom / Other"
-
-data_path:
-  result: "{project-root}/{bmad_folder}/bmgd/data"

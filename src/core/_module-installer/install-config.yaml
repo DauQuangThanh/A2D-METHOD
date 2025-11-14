@@ -23,8 +23,9 @@ document_output_language:
   default: "{communication_language}"
   result: "{value}"
 
+  # This is the folder where all generated AI Output documents from workflows will default be sa
 output_folder:
-  prompt: "Where should the generated output default save location be?"
+  prompt: "Where should AI Generated Artifacts be saved across all modules?"
   default: "docs"
   result: "{project-root}/{value}"
 

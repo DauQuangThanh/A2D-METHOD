@@ -35,14 +35,9 @@ user_skill_level:
     - value: "expert"
       label: "Expert - Deep technical knowledge, be direct and technical"
 
-tech_docs:
-  prompt: "Where is Technical Documentation located within the project?"
-  default: "{output_folder}/technical"
-  result: "{project-root}/{value}"
-
-dev_ephemeral_location:
-  prompt: "Where should ephemeral development artifacts be stored (workflow and sprint status, stories, epics, temp context, etc...)?"
-  default: "{bmad_folder}-ephemeral"
+sprint_artifacts:
+  prompt: "Where should Sprint Artifacts be stored (sprint status, stories, story context, temp context, etc...)?"
+  default: "{output_folder}/sprint-artifacts"
   result: "{project-root}/{value}"
 
 # TEA Agent Configuration
