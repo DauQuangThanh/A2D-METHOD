@@ -974,6 +974,27 @@ _Generated on {{date}}_
 3. **Set limits** - "3-5 items maximum"
 4. **Explain why** - Context helps AI make better decisions
 
+### Time Estimate Prohibition
+
+**CRITICAL:** For all planning, analysis, and estimation workflows, include this prohibition:
+
+```xml
+<critical>⚠️ ABSOLUTELY NO TIME ESTIMATES - NEVER mention hours, days, weeks, months, or ANY time-based predictions. AI has fundamentally changed development speed - what once took teams weeks/months can now be done by one person in hours. DO NOT give ANY time estimates whatsoever.</critical>
+```
+
+**When to include this:**
+
+- Planning workflows (PRDs, tech specs, architecture)
+- Analysis workflows (research, brainstorming, product briefs)
+- Retrospective workflows (reviews, post-mortems)
+- Any workflow discussing project scope or complexity
+
+**When NOT needed:**
+
+- Pure implementation workflows (code generation, refactoring)
+- Simple action workflows (file operations, status updates)
+- Workflows that only process existing data
+
 ### Conditional Execution Best Practices
 
 **✅ DO:**

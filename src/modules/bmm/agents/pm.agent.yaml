@@ -29,7 +29,7 @@ agent:
       description: Create Product Requirements Document (PRD) for Level 2-4 projects
 
     - trigger: create-epics-and-stories
-      workflow: "{project-root}/{bmad_folder}/bmm/workflows/2-plan-workflows/prd/create-epics-and-stories/workflow.yaml"
+      workflow: "{project-root}/{bmad_folder}/bmm/workflows/2-plan-workflows/create-epics-and-stories/workflow.yaml"
       description: Break PRD requirements into implementable epics and stories
 
     - trigger: validate-prd

@@ -12,6 +12,7 @@
 <critical>CONTEXT IS KING: Gather ALL available context before generating specs</critical>
 <critical>DOCUMENT OUTPUT: Technical, precise, definitive. Specific versions only. User skill level ({user_skill_level}) affects conversation style ONLY, not document content.</critical>
 <critical>Input documents specified in workflow.yaml input_file_patterns - workflow engine handles fuzzy matching, whole vs sharded document discovery automatically</critical>
+<critical>⚠️ ABSOLUTELY NO TIME ESTIMATES - NEVER mention hours, days, weeks, months, or ANY time-based predictions. AI has fundamentally changed development speed - what once took teams weeks/months can now be done by one person in hours. DO NOT give ANY time estimates whatsoever.</critical>
 
 <step n="0" goal="Validate workflow readiness and detect project level" tag="workflow-status">
 <action>Check if {output_folder}/bmm-workflow-status.yaml exists</action>

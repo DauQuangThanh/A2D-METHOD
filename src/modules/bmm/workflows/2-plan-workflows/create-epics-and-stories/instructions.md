@@ -13,11 +13,109 @@
 <critical>Generate all documents in {document_output_language}</critical>
 <critical>LIVING DOCUMENT: Write to epics.md continuously as you work - never wait until the end</critical>
 <critical>Input documents specified in workflow.yaml input_file_patterns - workflow engine handles fuzzy matching, whole vs sharded document discovery automatically</critical>
+<critical>⚠️ ABSOLUTELY NO TIME ESTIMATES - NEVER mention hours, days, weeks, months, or ANY time-based predictions. AI has fundamentally changed development speed - what once took teams weeks/months can now be done by one person in hours. DO NOT give ANY time estimates whatsoever.</critical>
 
 <workflow>
 
+<step n="0" goal="Detect workflow mode and available context">
+<action>Determine if this is initial creation or update mode
+
+**Check for existing epics.md:**
+</action>
+
+<action>Check if {default_output_file} exists (epics.md)</action>
+
+<check if="epics.md exists">
+  <action>Set mode = "UPDATE"</action>
+  <action>Load existing epics.md completely</action>
+  <action>Extract existing:
+  - Epic structure and titles
+  - Story breakdown
+  - FR coverage mapping
+  - Existing acceptance criteria
+  </action>
+
+<output>📝 **UPDATE MODE DETECTED**
+
+Found existing epics.md - I'll enhance it with newly available context.
+
+Existing structure:
+
+- {{epic_count}} epics defined
+- {{story_count}} total stories
+  </output>
+  </check>
+
+<check if="epics.md does not exist">
+  <action>Set mode = "CREATE"</action>
+  <output>🆕 **INITIAL CREATION MODE**
+
+No existing epics found - I'll create the initial epic breakdown.
+</output>
+</check>
+
+<action>**Detect available context documents:**</action>
+
+<action>Check which documents exist:
+
+- UX Design specification ({ux_design_content})
+- Architecture document ({architecture_content})
+- Domain brief ({domain_brief_content})
+- Product brief ({product_brief_content})
+  </action>
+
+<check if="mode == 'UPDATE'">
+  <action>Identify what's NEW since last epic update:
+
+- If UX exists AND not previously incorporated:
+  - Flag: "ADD_UX_DETAILS = true"
+  - Note UX sections to extract (interaction patterns, mockup references, responsive breakpoints)
+
+- If Architecture exists AND not previously incorporated:
+  - Flag: "ADD_ARCH_DETAILS = true"
+  - Note Architecture sections to extract (tech stack, API contracts, data models)
+    </action>
+
+<output>**Context Analysis:**
+{{if ADD_UX_DETAILS}}
+✅ UX Design found - will add interaction details to stories
+{{/if}}
+{{if ADD_ARCH_DETAILS}}
+✅ Architecture found - will add technical implementation notes
+{{/if}}
+{{if !ADD_UX_DETAILS && !ADD_ARCH_DETAILS}}
+⚠️ No new context documents found - reviewing for any PRD changes
+{{/if}}
+</output>
+</check>
+
+<check if="mode == 'CREATE'">
+  <output>**Available Context:**
+  - ✅ PRD (required)
+  {{if ux_design_content}}
+  - ✅ UX Design (will incorporate interaction patterns)
+  {{/if}}
+  {{if architecture_content}}
+  - ✅ Architecture (will incorporate technical decisions)
+  {{/if}}
+  {{if !ux_design_content && !architecture_content}}
+  - ℹ️ Creating basic epic structure (can be enhanced later with UX/Architecture)
+  {{/if}}
+  </output>
+</check>
+
+<template-output>workflow_mode</template-output>
+<template-output>available_context</template-output>
+</step>
+
 <step n="1" goal="Load PRD and extract requirements">
-<action>Welcome {user_name} to epic and story planning
+<action>
+<check if="mode == 'CREATE'">
+Welcome {user_name} to epic and story planning
+</check>
+<check if="mode == 'UPDATE'">
+Welcome back {user_name} - let's enhance your epic breakdown with new context
+</check>
 
 Load required documents (fuzzy match, handle both whole and sharded):
 
@@ -70,6 +168,32 @@ This inventory will be used to validate complete coverage in Step 4.
 </step>
 
 <step n="2" goal="Propose epic structure from natural groupings">
+
+<check if="mode == 'UPDATE'">
+  <action>**MAINTAIN existing epic structure:**
+
+Use the epic structure already defined in epics.md:
+
+- Keep all existing epic titles and goals
+- Preserve epic sequencing
+- Maintain FR coverage mapping
+
+Note: We're enhancing stories within existing epics, not restructuring.
+</action>
+
+<output>**Using existing epic structure:**
+{{list_existing_epics_with_titles}}
+
+Will enhance stories within these epics using new context.
+</output>
+
+<template-output>epics_summary</template-output>
+<template-output>fr_coverage_map</template-output>
+
+<goto step="3">Skip to story enhancement</goto>
+</check>
+
+<check if="mode == 'CREATE'">
 <action>Analyze requirements and identify natural epic boundaries
 
 INTENT: Find organic groupings that make sense for THIS product
@@ -124,9 +248,66 @@ If any FRs are unmapped, add them now or explain why they're deferred.
 
 <template-output>epics_summary</template-output>
 <template-output>fr_coverage_map</template-output>
+</check>
 </step>
 
 <step n="3" goal="Decompose each epic into bite-sized stories with DETAILED AC" repeat="for-each-epic">
+
+<check if="mode == 'UPDATE'">
+  <action>**ENHANCE Epic {{N}} stories with new context:**
+
+For each existing story in Epic {{N}}:
+
+1. Preserve core story structure (title, user story statement)
+2. Add/enhance based on available NEW context:
+
+  <check if="ADD_UX_DETAILS">
+    **Add from UX Design:**
+    - Specific mockup/wireframe references
+    - Exact interaction patterns
+    - Animation/transition specifications
+    - Responsive breakpoints
+    - Component specifications
+    - Error states and feedback patterns
+    - Accessibility requirements (WCAG compliance)
+
+    Example enhancement:
+    BEFORE: "User can log in"
+    AFTER: "User can log in via modal (UX pg 12-15) with email/password fields,
+            password visibility toggle, remember me checkbox,
+            loading state during auth (spinner overlay),
+            error messages below fields (red, 14px),
+            success redirects to dashboard with fade transition"
+
+  </check>
+
+  <check if="ADD_ARCH_DETAILS">
+    **Add from Architecture:**
+    - Specific API endpoints and contracts
+    - Data model references
+    - Tech stack implementation details
+    - Performance requirements
+    - Security implementation notes
+    - Cache strategies
+    - Error handling patterns
+
+    Example enhancement:
+    BEFORE: "System authenticates user"
+    AFTER: "System authenticates user via POST /api/v1/auth/login,
+            validates against users table (see Arch section 6.2),
+            returns JWT token (expires 7d) + refresh token (30d),
+            rate limited to 5 attempts/hour/IP,
+            logs failures to security_events table"
+
+  </check>
+
+3. Update acceptance criteria with new details
+4. Preserve existing prerequisites
+5. Enhance technical notes with new context
+   </action>
+   </check>
+
+<check if="mode == 'CREATE'">
 <action>Break down Epic {{N}} into small, implementable stories
 
 INTENT: Create stories sized for single dev agent completion
@@ -208,10 +389,60 @@ For each story in epic {{N}}, output variables following this pattern:
 
 <action>For each story M in epic {{N}}, generate story content</action>
 <template-output>story-title-{{N}}-{{M}}</template-output>
+</check>
 
 </step>
 
-<step n="4" goal="Review initial epic breakdown and prepare for updates">
+<step n="4" goal="Review epic breakdown and completion">
+
+<check if="mode == 'UPDATE'">
+  <action>Review the ENHANCED epic breakdown for completeness
+
+**Validate Enhancements:**
+
+- All stories now have context-appropriate details
+- UX references added where applicable
+- Architecture decisions incorporated where applicable
+- Acceptance criteria updated with new specifics
+- Technical notes enhanced with implementation details
+
+**Quality Check:**
+
+- Stories remain bite-sized for single dev agent sessions
+- No forward dependencies introduced
+- All new context properly integrated
+  </action>
+
+<template-output>epic_breakdown_summary</template-output>
+<template-output>enhancement_summary</template-output>
+
+<output>✅ **Epic Enhancement Complete!**
+
+**Updated:** epics.md with enhanced context
+
+**Enhancements Applied:**
+{{if ADD_UX_DETAILS}}
+
+- ✅ UX interaction patterns and mockup references added
+  {{/if}}
+  {{if ADD_ARCH_DETAILS}}
+- ✅ Architecture technical decisions and API contracts added
+  {{/if}}
+
+The epic breakdown now includes all available context for Phase 4 implementation.
+
+**Next Steps:**
+{{if !architecture_content}}
+
+- Run Architecture workflow for technical decisions
+  {{/if}}
+  {{if architecture_content}}
+- Ready for Phase 4: Sprint Planning
+  {{/if}}
+  </output>
+  </check>
+
+<check if="mode == 'CREATE'">
 <action>Review the complete epic breakdown for quality and completeness
 
 **Validate FR Coverage:**
@@ -239,54 +470,65 @@ If any FRs are missing, add stories now.
 - Domain/compliance requirements are properly distributed
 - Sequencing enables incremental value delivery
 
-**BMad Method Next Steps:**
-
-This epic breakdown is the INITIAL VERSION. It will be updated as you progress:
-
-1. **After UX Design Workflow:**
-   - UX Designer will design interactions for capabilities
-   - UPDATE story acceptance criteria with UX specs (mockup references, flow details)
-   - Add interaction patterns, visual design decisions, responsive breakpoints
-
-2. **After Architecture Workflow:**
-   - Architect will define technical implementation approach
-   - UPDATE story technical notes with architecture decisions
-   - Add references to data models, API contracts, tech stack choices, deployment patterns
-
-3. **During Phase 4 Implementation:**
-   - Each story pulls context from: PRD (why) + epics.md (what/how) + UX (interactions) + Architecture (technical)
-   - Stories may be further refined as implementation uncovers edge cases
-   - This document remains the single source of truth for story details
-
 Confirm with {user_name}:
 
 - Epic structure makes sense
 - All FRs covered by stories (validated via coverage matrix)
-- Story breakdown is actionable with detailed acceptance criteria
-- Ready for UX Design workflow (next BMad Method step)
+- Story breakdown is actionable
+  <check if="ux_design_content && architecture_content">
+- All available context has been incorporated (PRD + UX + Architecture)
+- Ready for Phase 4 Implementation
+  </check>
+  <check if="ux_design_content && !architecture_content">
+- UX context has been incorporated
+- Ready for Architecture workflow (recommended next step)
+  </check>
+  <check if="!ux_design_content && architecture_content">
+- Architecture context has been incorporated
+- Consider running UX Design workflow if UI exists
+  </check>
+  <check if="!ux_design_content && !architecture_content">
+- Basic epic structure created from PRD
+- Ready for next planning phase (UX Design or Architecture)
+  </check>
   </action>
 
 <template-output>epic_breakdown_summary</template-output>
 <template-output>fr_coverage_matrix</template-output>
 
-<output>**✅ Epic Breakdown Complete (Initial Version)**
+<check if="mode == 'CREATE'">
+<output>**✅ Epic Breakdown Complete**
 
 **Created:** epics.md with epic and story breakdown
 
-**FR Coverage:** All functional requirements from PRD mapped to stories (see coverage matrix in document)
+**FR Coverage:** All functional requirements from PRD mapped to stories
 
-**Next Steps in BMad Method:**
+**Context Incorporated:**
+{{if ux_design_content && architecture_content}}
 
-1. **UX Design** (if UI exists) - Run: `workflow ux-design`
-   → Will add interaction details to stories in epics.md
-
-2. **Architecture** - Run: `workflow create-architecture`
-   → Will add technical details to stories in epics.md
-
-3. **Phase 4 Implementation** - Stories ready for context assembly
-
-**Important:** This is a living document that will be updated as you progress through the workflow chain. The epics.md file will evolve with UX and Architecture inputs before implementation begins.
-</output>
-</step>
+- ✅ PRD requirements
+- ✅ UX interaction patterns
+- ✅ Architecture technical decisions
+  **Status:** COMPLETE - Ready for Phase 4 Implementation!
+  {{/if}}
+  {{if ux_design_content && !architecture_content}}
+- ✅ PRD requirements
+- ✅ UX interaction patterns
+  **Next:** Run Architecture workflow for technical decisions
+  {{/if}}
+  {{if !ux_design_content && architecture_content}}
+- ✅ PRD requirements
+- ✅ Architecture technical decisions
+  **Next:** Consider UX Design workflow if UI needed
+  {{/if}}
+  {{if !ux_design_content && !architecture_content}}
+- ✅ PRD requirements (basic structure)
+  **Next:** Run UX Design (if UI) or Architecture workflow
+  **Note:** Epics will be enhanced with additional context later
+  {{/if}}
+  </output>
+  </check>
+  </check>
+  </step>
 
 </workflow>
